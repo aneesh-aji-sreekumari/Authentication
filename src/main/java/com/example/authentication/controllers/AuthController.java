@@ -1,10 +1,12 @@
 package com.example.authentication.controllers;
 
 import com.example.authentication.dtos.*;
+import com.example.authentication.enums.SessionStatus;
 import com.example.authentication.exceptions.InvalidCredentialException;
 import com.example.authentication.exceptions.UserAlreadyExistsException;
 import com.example.authentication.exceptions.UserNotFoundException;
 import com.example.authentication.services.AuthService;
+import jakarta.annotation.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,8 +29,10 @@ public class AuthController {
         return userDtoResponseEntity;
     }
     @GetMapping("/logout")
-    public String logout(@RequestHeader LogoutRequestDto logoutRequestDto){
-        return "U have hit the logout API";
+    public ResponseEntity<String> logout(@Nullable@RequestHeader("AUTH_TOKEN") String authToken,
+                                         @Nullable@RequestHeader("USER_ID") Long userId){
+
+        return authService.logout(authToken, userId);
     }
     @PostMapping("/signup")
     public ResponseEntity<UserDto> signup(@RequestBody SignupRequestDto requestDto) throws UserAlreadyExistsException {
@@ -36,8 +40,13 @@ public class AuthController {
         return new ResponseEntity<>(userDto, HttpStatus.OK);
     }
     @GetMapping("/validate")
-    public String validate(@RequestHeader ValidateRequestDto validateRequestDto){
-        return "U have hit the validate API";
+    public ResponseEntity<SessionStatus> validate(
+            @RequestBody ValidateRequestDto validateRequestDto,
+            @Nullable @RequestHeader("AUTH_TOKEN") String authToken,
+            @Nullable @RequestHeader("USER_ID") String userId){
+        ResponseEntity<SessionStatus> response
+                = authService.validate(validateRequestDto.getDeviceId(), validateRequestDto.getIpAddress(), authToken, userId);
+        return response;
     }
 
 }

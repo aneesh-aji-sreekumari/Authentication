@@ -12,12 +12,14 @@ import com.example.authentication.models.User;
 import com.example.authentication.repositories.RoleRepository;
 import com.example.authentication.repositories.SessionRepository;
 import com.example.authentication.repositories.UserRepository;
+import jakarta.annotation.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMapAdapter;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -56,19 +58,7 @@ public class AuthService {
         User user = optionalUser.get();
         if(!bCryptPasswordEncoder.matches(password, user.getPassword()))
             throw new InvalidCredentialException("");
-        Map<String, Object> headerMap = new HashMap<>();
-        headerMap.put("email", email);
-        headerMap.put("deviceId", deviceId);
-        headerMap.put("ipAddress", ipAddress);
-        headerMap.put("userId", user.getId());
-        headerMap.put("createdAt", Instant.now());
-        String jwt = JWT.create()
-                .withHeader(headerMap)
-                .withClaim("string-claim", "string-value")
-                .withClaim("number-claim", 42)
-                .withClaim("bool-claim", true)
-                .withClaim("datetime-claim", Instant.now())
-                .sign(Algorithm.HMAC256(secret));
+        String jwt = jwtTokenCreator(deviceId, ipAddress, user.getId().toString(), secret);
         Session session = new Session();
         session.setUser(user);
         session.setSessionStatus(SessionStatus.ACTIVE);
@@ -79,10 +69,36 @@ public class AuthService {
         headers.add("AUTH_TOKEN", savedSession.getToken());
         return new ResponseEntity<>(UserDto.from(user), headers, HttpStatus.OK);
     }
-    public void logout(String email, String password){
-
+    public ResponseEntity<String> logout(String authToken, Long userId){
+        Optional<Session> optionalSession = sessionRepository.findSessionByToken(authToken);
+        if(optionalSession.isEmpty())
+            return new ResponseEntity<>("No session exists", HttpStatus.NOT_FOUND);
+        Session session = optionalSession.get();
+        if(session.getSessionStatus().equals(SessionStatus.LOGGED_OUT))
+            return new ResponseEntity<>("U r already Loggedout", HttpStatus.NOT_ACCEPTABLE);
+        session.setSessionStatus(SessionStatus.LOGGED_OUT);
+        sessionRepository.save(session);
+        return new ResponseEntity<>("U have loggedout Successfully", HttpStatus.OK);
     }
-    public void validate(String email, String password){
-
+    public ResponseEntity<SessionStatus> validate(String deviceId, String ipAddress, String authToken, String userId){
+        if(jwtTokenCreator(deviceId, ipAddress, userId, secret).equals(authToken)) {
+            Optional<Session> optionalSession = sessionRepository.findSessionByToken(authToken);
+            Session session = optionalSession.get();
+            if (session.getSessionStatus().equals(SessionStatus.ACTIVE))
+                return new ResponseEntity<>(SessionStatus.ACTIVE, HttpStatus.ACCEPTED);
+            else
+                return new ResponseEntity<>(SessionStatus.EXPIRED, HttpStatus.NOT_ACCEPTABLE);
+        }
+        return new ResponseEntity<>(SessionStatus.INVALID, HttpStatus.NOT_FOUND);
+    }
+    private String jwtTokenCreator(String deviceId, String ipAddress, String userId, String secret){
+        Map<String, Object> headerMap = new HashMap<>();
+        headerMap.put("deviceId", deviceId);
+        headerMap.put("ipAddress", ipAddress);
+        headerMap.put("userId", userId);
+        String jwt = JWT.create()
+                .withHeader(headerMap)
+                .sign(Algorithm.HMAC256(secret));
+        return jwt;
     }
 }
